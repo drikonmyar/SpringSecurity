@@ -69,16 +69,16 @@ public class SecurityConfig {
 
             return new org.springframework.security.core.userdetails.User(
                     user.getName(),
-                    "{noop}"+user.getPassword(),
+                    user.getPassword(),
                     authorities
             );
         };
     }
 
-//    @Bean
-//    public PasswordEncoder passwordEncoder() {
-//        return new BCryptPasswordEncoder();
-//    }
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
 
 
 }
