@@ -16,7 +16,7 @@ import java.util.List;
 @EnableGlobalMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
-    private static final List<String> ignoredPaths = List.of("/welcome", "/user", "/role", "/assign", "/assign/**");
+    private static final List<String> ignoredPaths = List.of("/greet/welcome", "/user", "/role", "/assign", "/assign/**");
 
     @Bean
     public WebSecurityCustomizer webSecurityCustomizer(){
