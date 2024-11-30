@@ -1,84 +1,72 @@
 package com.easter.SpringSecurity.config;
 
-import com.easter.SpringSecurity.Repository.RoleRepository;
-import com.easter.SpringSecurity.Repository.UserRepository;
+import com.easter.SpringSecurity.Filter.JwtAuthFilter;
+import com.easter.SpringSecurity.Service.UserInfoService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
-
-import java.util.ArrayList;
-import java.util.List;
-
-import static org.springframework.security.config.Customizer.withDefaults;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
-@EnableGlobalMethodSecurity(prePostEnabled = true)
+@EnableMethodSecurity
 public class SecurityConfig {
 
-    private static final List<String> ignoredPaths = List.of("/greet/welcome", "/user", "/role", "/assign", "/assign/**");
+    @Autowired
+    private JwtAuthFilter authFilter;
 
     @Bean
-    public WebSecurityCustomizer webSecurityCustomizer(){
-        return (web) -> web.ignoring().requestMatchers(ignoredPaths.toArray(String[]::new));
+    public UserDetailsService userDetailsService() {
+        return new UserInfoService(); // Ensure UserInfoService implements UserDetailsService
     }
-
-//    @Bean
-//    public InMemoryUserDetailsManager userDetailsManager() {
-//        UserDetails admin = User.withUsername("admin")
-//                .password("{noop}admin") // {noop} indicates no password encoder
-//                .authorities("ADMIN_VIEW_ONLY") // Assign authority
-//                .build();
-//        return new InMemoryUserDetailsManager(admin);
-//    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                .csrf(csrf -> csrf.disable()) // Disable CSRF for stateless APIs
                 .authorizeHttpRequests(auth -> auth
-                        .anyRequest().authenticated()
+                        .requestMatchers("/auth/welcome", "/auth/addNewUser", "/auth/generateToken").permitAll()
+                        .requestMatchers("/auth/user/**").hasAuthority("ROLE_USER")
+                        .requestMatchers("/auth/admin/**").hasAuthority("ROLE_ADMIN")
+                        .anyRequest().authenticated() // Protect all other endpoints
                 )
-                .formLogin(withDefaults())
-                .httpBasic(withDefaults());
+                .sessionManagement(sess -> sess
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS) // No sessions
+                )
+                .authenticationProvider(authenticationProvider()) // Custom authentication provider
+                .addFilterBefore(authFilter, UsernamePasswordAuthenticationFilter.class); // Add JWT filter
+
         return http.build();
     }
 
     @Bean
-    public UserDetailsService userDetailsService(UserRepository userRepository, RoleRepository roleRepository){
-        return username -> {
-            com.easter.SpringSecurity.Entity.User user = userRepository.findByName(username).orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
-            List<String> roles = roleRepository.findRolesByUserId(user.getId());
-
-            List<GrantedAuthority> authorities = new ArrayList<>();
-            for(String role : roles){
-                authorities.add(new SimpleGrantedAuthority(role));
-            }
-
-            return new org.springframework.security.core.userdetails.User(
-                    user.getName(),
-                    user.getPassword(),
-                    authorities
-            );
-        };
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(); // Password encoding
     }
 
     @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+    public AuthenticationProvider authenticationProvider() {
+        DaoAuthenticationProvider authenticationProvider = new DaoAuthenticationProvider();
+        authenticationProvider.setUserDetailsService(userDetailsService());
+        authenticationProvider.setPasswordEncoder(passwordEncoder());
+        return authenticationProvider;
     }
 
-
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
 }
